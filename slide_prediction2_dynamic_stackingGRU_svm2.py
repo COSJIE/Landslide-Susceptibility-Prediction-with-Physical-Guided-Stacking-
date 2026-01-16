@@ -609,5 +609,103 @@ def compute_shap_values(model, X, feature_names, output_path='shap_values.csv', 
     plt.close()
     print(f"SHAP 摘要图已保存至 {plot_path}")
 
+
+# 在模型评估部分后添加k折验证代码
+print("\n=== 5-fold Cross-Validation Results ===")
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+cv_auc_scores = []
+cv_spearman_scores = []
+
+for fold, (train_idx, val_idx) in enumerate(kf.split(X_train_scaled)):
+    print(f"\nFold {fold + 1}/5:")
+
+    # 分割数据
+    X_cv_train = X_train_scaled[train_idx]
+    y_cv_train = y_train.values[train_idx]
+    X_cv_val = X_train_scaled[val_idx]
+    y_cv_val = y_train.values[val_idx]
+    fos_cv_val = fos_train[val_idx]
+
+    # 训练GRU模型
+    gru_cv = GRUModel(**gru_best_params)
+    gru_wrapper_cv = GRUWrapper(gru_cv, device='cuda' if torch.cuda.is_available() else 'cpu')
+
+    # 计算伪标签
+    pseudo_cv = compute_pseudo_labels(fos_train[train_idx])
+
+    # 训练Transformer模型
+    transformer_cv = TransformerModel(**transformer_best_params)
+    transformer_wrapper_cv = PyTorchModelWrapper(
+        transformer_cv, pseudo_cv, alpha=0.3,
+        device='cuda' if torch.cuda.is_available() else 'cpu'
+    )
+
+    # 训练两个基模型
+    gru_wrapper_cv.fit(X_cv_train, y_cv_train)
+    transformer_wrapper_cv.fit(X_cv_train, y_cv_train)
+
+    # 预测
+    gru_proba_cv = gru_wrapper_cv.predict_proba(X_cv_val)[:, 1]
+    transformer_proba_cv = transformer_wrapper_cv.predict_proba(X_cv_val)[:, 1]
+
+    # Stacking特征
+    stacking_inputs_cv = np.column_stack((gru_proba_cv, transformer_proba_cv))
+
+    # 训练SVM元模型
+    svm_cv = SVC(
+        C=10 ** best_params['svm_log_C'],
+        gamma=10 ** best_params['svm_log_gamma'],
+        kernel='rbf',
+        probability=True,
+        random_state=42
+    )
+    svm_cv.fit(stacking_inputs_cv, y_cv_val)
+
+    # 最终预测
+    stacking_proba_cv = svm_cv.predict_proba(stacking_inputs_cv)[:, 1]
+
+    # 计算指标
+    auc_cv = roc_auc_score(y_cv_val, stacking_proba_cv)
+    spearman_cv, _ = spearmanr(fos_cv_val, stacking_proba_cv)
+
+    cv_auc_scores.append(auc_cv)
+    cv_spearman_scores.append(spearman_cv)
+
+    print(f"  AUC: {auc_cv:.4f}, Spearman correlation: {spearman_cv:.4f}")
+
+# 统计结果
+print("\n=== Cross-Validation Summary ===")
+print(f"Mean AUC: {np.mean(cv_auc_scores):.4f} (±{np.std(cv_auc_scores):.4f})")
+print(f"Mean Spearman correlation: {np.mean(cv_spearman_scores):.4f} (±{np.std(cv_spearman_scores):.4f})")
+print(f"Range of AUC: {np.min(cv_auc_scores):.4f} - {np.max(cv_auc_scores):.4f}")
+
+# 保存结果
+cv_results = pd.DataFrame({
+    'Fold': range(1, 6),
+    'AUC': cv_auc_scores,
+    'Spearman': cv_spearman_scores
+})
+cv_results.to_csv('cross_validation_results.csv', index=False, encoding='utf-8')
+print("Cross-validation results saved to cross_validation_results.csv")
+
+# 绘制CV结果图
+plt.figure(figsize=(10, 6))
+plt.subplot(1, 2, 1)
+plt.boxplot(cv_auc_scores)
+plt.title('AUC across 5 Folds')
+plt.ylabel('AUC')
+plt.grid(True, alpha=0.3)
+
+plt.subplot(1, 2, 2)
+plt.boxplot(cv_spearman_scores)
+plt.title('Spearman Correlation across 5 Folds')
+plt.ylabel('Spearman ρ')
+plt.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('cross_validation_boxplot.png', dpi=300, bbox_inches='tight')
+plt.close()
+print("Cross-validation boxplot saved to cross_validation_boxplot.png")
+
 print("\n=== 计算 SHAP 值 ===")
 compute_shap_values(stacking_model, X_test_scaled, selected_features)
