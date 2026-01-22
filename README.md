@@ -17,3 +17,7 @@ Install dependencies:
 ```bash
 conda install -r requirements.txt
 After downloading the installation package. Enter the data with the name 'original data' into slide_prediction_2-dynamic_stockingGRU_Svm2.py to run the result.
+
+Put the data file into the corresponding execution path and start running it, with annotations for each step
+
+Data contains 15 initial conditioning factors—elevation, slope, aspect, plan curvature, profile curvature, rainfall, surface roughness (SR), lithology, normalized difference vegetation index (NDVI), river core density (RICD), fault core density (FCD), road core density (ROCD), stream power index (SPI), topographic wetness index (TWI), and degree of relief (DoR)—along with a binary landslide label (1 = landslide, 0 = non-landslide) and the corresponding factor of safety (FOS) computed by TRIGRS.
