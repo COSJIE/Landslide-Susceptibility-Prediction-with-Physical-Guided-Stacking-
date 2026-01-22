@@ -19,7 +19,7 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# 依赖检查
+# Dependency check
 required_modules = {
     'pandas': 'pandas',
     'numpy': 'numpy',
@@ -40,50 +40,50 @@ for module, install_name in required_modules.items():
 print(f"PyTorch version: {torch.__version__}")
 print(f"Python version: {sys.version}")
 
-# 数据文件路径
-data_path = 'F:/code/汉源gis评估/数据处理/原数据.xlsx'
+# Data file path
+data_path = 'Data file path/original_data.xlsx'
 if not os.path.exists(data_path):
     raise FileNotFoundError(f"Data file {data_path} not found")
 
-# 预处理
-print("=== 开始预处理 ===")
+# preprocessing
+print("=== Start preprocessing ===")
 df = pd.read_excel(data_path)
 
-# 处理 FOS 异常值
+# Handling FOS Outliers
 fos_outliers = df[df['fos'] >= 10]
-print("FOS 异常值：\n", fos_outliers[['FID', 'fos', 'CID']])
+print("FOS outliers:\n", fos_outliers[['FID', 'fos', 'CID']])
 df.loc[df['fos'] >= 10, 'fos'] = df['fos'].median()
 
-# 检测其他异常值
+# Detect other outliers
 numeric_cols = df.select_dtypes(include=np.number).columns.drop(['FID', 'CID'])
 z_scores = df[numeric_cols].apply(zscore)
 outliers = (z_scores.abs() > 3).any(axis=1)
-print("其他异常值样本数：", outliers.sum())
+print("Number of other outlier samples:", outliers.sum())
 for col in numeric_cols:
     df.loc[z_scores[col].abs() > 3, col] = df[col].median()
 
-# 岩性地质权重
-df['岩性'] = df['岩性'].map({1: 3, 2: 2, 3: 1})
+# lithology geological weight
+df['lithology'] = df['lithology'].map({1: 3, 2: 2, 3: 1})
 
-# 构造交互项
-df['坡度_降雨'] = df['坡度'] * df['降雨']
-df['地形起伏度_湿度指数'] = df['地形起伏度'] * df['湿度指数']
-df['坡度_水流强度指数'] = df['坡度'] * df['水流强度指数']
-df['高程_降雨'] = df['高程'] * df['降雨']
-df['fos_岩性'] = df['fos'] * df['岩性']
+# Construct interaction terms
+df['Slope_rainfall'] = df['Slope'] * df['rainfall']
+df['DoR_TWI'] = df['DoR'] * df['TWI']
+df['Slope_SPI'] = df['Slope'] * df['SPI']
+df['Elevation_rainfall'] = df['Elevation'] * df['rainfall']
+df['fos_lithology'] = df['fos'] * df['lithology']
 df['is_fos_low'] = (df['fos'] < 1.1).astype(int)
 
 X = df.drop(columns=['FID', 'CID'])
 y = df['CID']
 
-# 数据划分
+# Data splitting
 X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.1, stratify=y, random_state=42)
 X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=2 / 9, stratify=y_temp, random_state=42)
-print("训练集样本数：", len(X_train))
-print("验证集样本数：", len(X_val))
-print("测试集样本数：", len(X_test))
+print("Number of training samples:", len(X_train))
+print("Number of validation samples:", len(X_val))
+print("Number of test samples:", len(X_test))
 
-# 标准化
+# Standardization
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_val_scaled = scaler.transform(X_val)
@@ -93,17 +93,17 @@ fos_train = X_train['fos'].values
 fos_val = X_val['fos'].values
 fos_test = X_test['fos'].values
 
-# 特征选择：互信息前 15 个特征
+# Feature selection: top 15 features by mutual information
 mi_scores = mutual_info_classif(X_train_scaled, y_train, random_state=42)
 feature_names = X.columns
 mi_scores_df = pd.DataFrame({'Feature': feature_names, 'MI_Score': mi_scores})
 mi_scores_df = mi_scores_df.sort_values(by='MI_Score', ascending=False)
-print("特征互信息得分：")
+print("Feature mutual information scores:")
 for _, row in mi_scores_df.iterrows():
     print(f"{row['Feature']}: {row['MI_Score']:.4f}")
 mi_scores_df.to_csv('mi_scores.csv', index=False, encoding='utf-8')
 
-# 保留前 15 个特征，并强制保留关键特征
+# Keep top 15 features, force keep key features
 top_k = 15
 selected_features = mi_scores_df['Feature'].head(top_k).values
 key_features = ['is_fos_low', 'fos']
@@ -119,28 +119,28 @@ selected_features_mask = np.isin(feature_names, selected_features)
 X_train_scaled = X_train_scaled[:, selected_features_mask]
 X_val_scaled = X_val_scaled[:, selected_features_mask]
 X_test_scaled = X_test_scaled[:, selected_features_mask]
-print("筛选后特征：", selected_features)
+print("Selected features after filtering:", selected_features)
 
-# 保存处理后的数据
+# Save processed data
 np.savez('processed_data.npz', X_train_scaled=X_train_scaled, X_val_scaled=X_val_scaled, X_test_scaled=X_test_scaled,
          y_train=y_train.values, y_val=y_val.values, y_test=y_test.values, fos_train=fos_train, fos_val=fos_val,
          fos_test=fos_test, selected_features=selected_features)
 
-# 保存筛选后特征
+# Save selected features
 with open('selected_features.txt', 'w', encoding='utf-8') as f:
-    f.write("筛选后特征：\n")
+    f.write("Selected features after filtering:\n")
     for feature in selected_features:
         f.write(f"{feature}\n")
 
-# ------------------ 2. 可视化 ------------------
-print("\n=== 开始可视化 ===")
+# ------------------ 2. Visualization ------------------
+print("\n=== Start visualization ===")
 plt.figure(figsize=(8, 6))
 sns.scatterplot(x=df['fos'], y=df['CID'], hue=df['CID'])
 plt.axvline(x=1.1, color='red', linestyle='--')
 plt.savefig('fos_cid_scatter.png')
 plt.close()
 
-# ------------------ 3. 模型定义 ------------------
+# ------------------ 3. Model definition ------------------
 weights = np.where(fos_train < 1.1, 6.0 / (fos_train + 0.1), 1.0)
 
 class GRUModel(nn.Module):
@@ -317,8 +317,8 @@ class PyTorchModelWrapper:
     def predict(self, X):
         return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
 
-# ------------------ 4. 贝叶斯优化 ------------------
-print("\n=== 贝叶斯优化 ===")
+# ------------------ 4. Bayesian Optimization ------------------
+print("\n=== Bayesian Optimization ===")
 
 def compute_pseudo_labels(fos_values):
     fos_values = np.array(fos_values)
@@ -336,20 +336,20 @@ def generate_stacking_features(X, y, fos, pseudo_labels, gru_params, transformer
     weights = np.where(fos < 1.1, 6.0 / (fos + 0.1), 1.0)
 
     for fold, (train_idx, val_idx) in enumerate(kf.split(X)):
-        print(f"处理第 {fold + 1} 折...")
+        print(f"Processing fold {fold + 1}...")
         X_train, X_val = X[train_idx], X[val_idx]
         y_train, y_val = y[train_idx], y[val_idx]
         weights_train = weights[train_idx]
         pseudo_train = pseudo_labels[train_idx]
         pseudo_val = pseudo_labels[val_idx]
 
-        # 训练 GRU
+        # Train GRU
         gru_model = GRUModel(**gru_params)
         gru_wrapper = GRUWrapper(gru_model, device='cuda' if torch.cuda.is_available() else 'cpu')
         gru_wrapper.fit(X_train, y_train, (X_val, y_val), sample_weight=weights_train)
         gru_probas[val_idx] = gru_wrapper.predict_proba(X_val)[:, 1]
 
-        # 训练 Transformer
+        # Train Transformer
         transformer_model = TransformerModel(**transformer_params)
         transformer_wrapper = PyTorchModelWrapper(
             transformer_model, pseudo_train, alpha=0.3, device='cuda' if torch.cuda.is_available() else 'cpu')
@@ -418,9 +418,9 @@ optimizer = BayesianOptimization(f=objective, pbounds=pbounds, random_state=42)
 optimizer.maximize(init_points=5, n_iter=15)
 
 best_params = optimizer.max['params']
-print(f"最佳参数: {best_params}, AUC: {optimizer.max['target']:.4f}")
+print(f"Best parameters: {best_params}, AUC: {optimizer.max['target']:.4f}")
 
-# 训练最终模型
+# Train final models
 gru_best_params = {
     'input_dim': X_train_scaled.shape[1],
     'hidden_dim': int(best_params['hidden_dim']),
@@ -449,8 +449,8 @@ pytorch_best_model = PyTorchModelWrapper(
 pytorch_best_model.fit(X_train_scaled, y_train.values, (X_val_scaled, y_val.values), sample_weight=weights,
                        pseudo_labels_val=pseudo_labels_val)
 
-# 生成 Stacking 特征并训练元模型
-print("\n=== 生成 Stacking 特征 ===")
+# Generate Stacking features and train meta model
+print("\n=== Generating Stacking features ===")
 stacking_inputs, stacking_targets = generate_stacking_features(
     X_val_scaled, y_val.values, fos_val, pseudo_labels_val, gru_best_params, transformer_best_params)
 
@@ -462,15 +462,15 @@ meta_model = SVC(
     random_state=42
 )
 meta_model.fit(stacking_inputs, stacking_targets)
-print("Stacking 元模型（SVM）训练完成")
+print("Stacking meta model (SVM) training completed")
 
-# 测试集预测，使用 Stacking
+# Test set prediction using Stacking
 gru_proba = gru_best_wrapper.predict_proba(X_test_scaled)[:, 1]
 transformer_proba = pytorch_best_model.predict_proba(X_test_scaled)[:, 1]
 stacking_test_inputs = np.column_stack((gru_proba, transformer_proba))
 stacking_proba = meta_model.predict_proba(stacking_test_inputs)[:, 1]
 
-# 后处理调整
+# Post-processing adjustment
 stacking_pred = np.zeros_like(stacking_proba, dtype=int)
 for i, fos in enumerate(fos_test):
     if fos < 1.1:
@@ -478,8 +478,8 @@ for i, fos in enumerate(fos_test):
     else:
         stacking_pred[i] = 1 if stacking_proba[i] >= 0.5 else 0
 
-# ------------------ 5. 评估 ------------------
-print("\n=== 模型评估 ===")
+# ------------------ 5. Evaluation ------------------
+print("\n=== Model Evaluation ===")
 
 class StackingModel:
     def __init__(self, proba, pred, gru_wrapper, transformer_wrapper, meta_model):
@@ -501,31 +501,31 @@ def evaluate_model(model, X, y, fos, name):
     y_pred = model.predict(X)
     y_pred_proba = model.predict_proba(X)[:, 1]
     print(f"\n=== {name} ===")
-    print("分类报告：\n", classification_report(y, y_pred))
+    print("Classification report:\n", classification_report(y, y_pred))
     print("AUC:", roc_auc_score(y, y_pred_proba))
-    print("混淆矩阵:\n", confusion_matrix(y, y_pred))
+    print("Confusion matrix:\n", confusion_matrix(y, y_pred))
 
     fos_unstable = fos < 1.1
     if np.any(fos_unstable):
-        print("FOS < 1.1 预测为 CID=1 的比例:", np.mean(y_pred[fos_unstable]))
+        print("Proportion predicted as CID=1 when FOS < 1.1:", np.mean(y_pred[fos_unstable]))
     fos_stable = fos >= 1.1
     if np.any(fos_stable):
-        print("FOS >= 1.1 预测为 CID=0 的比例:", np.mean(1 - y_pred[fos_stable]))
+        print("Proportion predicted as CID=0 when FOS >= 1.1:", np.mean(1 - y_pred[fos_stable]))
 
     corr, p_value = spearmanr(fos, y_pred_proba)
-    print(f"FOS 与预测概率的 Spearman 相关性：{corr:.4f} (p-value: {p_value:.4f})")
+    print(f"Spearman correlation between FOS and predicted probability: {corr:.4f} (p-value: {p_value:.4f})")
 
-    # 保存 FOS 和预测概率为 CSV
+    # Save FOS and predicted probability to CSV
     fos_proba_df = pd.DataFrame({
         'FOS': fos,
         'Probability': y_pred_proba,
-        'True_Label': y  # 添加真实标签 0/1
-        })
+        'True_Label': y
+    })
     fos_proba_path = os.path.join(os.getcwd(), f'fos_pred_proba_{name.lower()}.csv')
     fos_proba_df.to_csv(fos_proba_path, index=False, encoding='utf-8')
-    print(f"FOS、预测概率和真实标签已保存至 {fos_proba_path}")
+    print(f"FOS, predicted probability and true labels saved to {fos_proba_path}")
 
-    # 计算并保存 ROC 曲线数据
+    # Compute and save ROC curve data
     fpr, tpr, thresholds = roc_curve(y, y_pred_proba)
     roc_auc = auc(fpr, tpr)
     roc_df = pd.DataFrame({
@@ -534,9 +534,9 @@ def evaluate_model(model, X, y, fos, name):
         'Threshold': thresholds
     })
     roc_df.to_csv(f'roc_curve_{name.lower()}.csv', index=False, encoding='utf-8')
-    print(f"ROC 曲线数据已保存至 roc_curve_{name.lower()}.csv (AUC: {roc_auc:.4f})")
+    print(f"ROC curve data saved to roc_curve_{name.lower()}.csv (AUC: {roc_auc:.4f})")
 
-    # 绘制并保存 ROC 曲线图
+    # Plot and save ROC curve
     plt.figure(figsize=(8, 6))
     plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random Guess')
@@ -548,7 +548,7 @@ def evaluate_model(model, X, y, fos, name):
     plt.legend(loc='lower right')
     plt.savefig(f'roc_curve_{name.lower()}.png')
     plt.close()
-    print(f"ROC 曲线图已保存至 roc_curve_{name.lower()}.png")
+    print(f"ROC curve plot saved to roc_curve_{name.lower()}.png")
 
     plt.figure(figsize=(8, 6))
     sns.scatterplot(x=fos, y=y_pred_proba, hue=y, style=y)
@@ -565,17 +565,17 @@ evaluate_model(gru_best_wrapper, X_test_scaled, y_test, fos_test, "GRU")
 evaluate_model(pytorch_best_model, X_test_scaled, y_test, fos_test, "Transformer")
 evaluate_model(stacking_model, X_test_scaled, y_test, fos_test, "Stacking")
 
-# SHAP 分析
+# SHAP analysis
 import shap
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 
-# 设置全局字体为 Times New Roman
+# Set global font to Times New Roman
 plt.rcParams['font.family'] = 'Times New Roman'
-plt.rcParams['font.size'] = 12  # 设置字体大小，适合论文
-plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+plt.rcParams['font.size'] = 12
+plt.rcParams['axes.unicode_minus'] = False
 
 
 def compute_shap_values(model, X, feature_names, output_path='shap_values.csv', plot_path='shap_summary.png'):
@@ -591,26 +591,26 @@ def compute_shap_values(model, X, feature_names, output_path='shap_values.csv', 
 
     shap_df = pd.DataFrame(shap_values, columns=feature_names)
     shap_df.to_csv(output_path, index=False, encoding='utf-8')
-    print(f"SHAP 值已保存至 {output_path}")
+    print(f"SHAP values saved to {output_path}")
 
-    # 计算并保存特征重要性（平均绝对 SHAP 值）
+    # Compute and save feature importance (mean absolute SHAP)
     feature_importance = np.abs(shap_df).mean().sort_values(ascending=False)
     importance_df = pd.DataFrame({
         'Feature': feature_importance.index,
         'Mean_Abs_SHAP': feature_importance.values
     })
     importance_df.to_csv('shap_feature_importance.csv', index=False, encoding='utf-8')
-    print("SHAP 特征重要性已保存至 shap_feature_importance.csv")
+    print("SHAP feature importance saved to shap_feature_importance.csv")
 
     plt.figure(figsize=(10, 6))
     shap.summary_plot(shap_values, X, feature_names=feature_names, show=False)
     plt.title('SHAP Feature Importance Analysis', fontfamily='Times New Roman')
     plt.savefig(plot_path, bbox_inches='tight', dpi=300)
     plt.close()
-    print(f"SHAP 摘要图已保存至 {plot_path}")
+    print(f"SHAP summary plot saved to {plot_path}")
 
 
-# 在模型评估部分后添加k折验证代码
+# Add 5-fold cross-validation after model evaluation section
 print("\n=== 5-fold Cross-Validation Results ===")
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
 cv_auc_scores = []
@@ -619,39 +619,39 @@ cv_spearman_scores = []
 for fold, (train_idx, val_idx) in enumerate(kf.split(X_train_scaled)):
     print(f"\nFold {fold + 1}/5:")
 
-    # 分割数据
+    # Split data
     X_cv_train = X_train_scaled[train_idx]
     y_cv_train = y_train.values[train_idx]
     X_cv_val = X_train_scaled[val_idx]
     y_cv_val = y_train.values[val_idx]
     fos_cv_val = fos_train[val_idx]
 
-    # 训练GRU模型
+    # Train GRU model
     gru_cv = GRUModel(**gru_best_params)
     gru_wrapper_cv = GRUWrapper(gru_cv, device='cuda' if torch.cuda.is_available() else 'cpu')
 
-    # 计算伪标签
+    # Compute pseudo labels
     pseudo_cv = compute_pseudo_labels(fos_train[train_idx])
 
-    # 训练Transformer模型
+    # Train Transformer model
     transformer_cv = TransformerModel(**transformer_best_params)
     transformer_wrapper_cv = PyTorchModelWrapper(
         transformer_cv, pseudo_cv, alpha=0.3,
         device='cuda' if torch.cuda.is_available() else 'cpu'
     )
 
-    # 训练两个基模型
+    # Train base models
     gru_wrapper_cv.fit(X_cv_train, y_cv_train)
     transformer_wrapper_cv.fit(X_cv_train, y_cv_train)
 
-    # 预测
+    # Predict
     gru_proba_cv = gru_wrapper_cv.predict_proba(X_cv_val)[:, 1]
     transformer_proba_cv = transformer_wrapper_cv.predict_proba(X_cv_val)[:, 1]
 
-    # Stacking特征
+    # Stacking features
     stacking_inputs_cv = np.column_stack((gru_proba_cv, transformer_proba_cv))
 
-    # 训练SVM元模型
+    # Train SVM meta model
     svm_cv = SVC(
         C=10 ** best_params['svm_log_C'],
         gamma=10 ** best_params['svm_log_gamma'],
@@ -661,10 +661,10 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(X_train_scaled)):
     )
     svm_cv.fit(stacking_inputs_cv, y_cv_val)
 
-    # 最终预测
+    # Final prediction
     stacking_proba_cv = svm_cv.predict_proba(stacking_inputs_cv)[:, 1]
 
-    # 计算指标
+    # Compute metrics
     auc_cv = roc_auc_score(y_cv_val, stacking_proba_cv)
     spearman_cv, _ = spearmanr(fos_cv_val, stacking_proba_cv)
 
@@ -673,13 +673,13 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(X_train_scaled)):
 
     print(f"  AUC: {auc_cv:.4f}, Spearman correlation: {spearman_cv:.4f}")
 
-# 统计结果
+# Summary
 print("\n=== Cross-Validation Summary ===")
 print(f"Mean AUC: {np.mean(cv_auc_scores):.4f} (±{np.std(cv_auc_scores):.4f})")
 print(f"Mean Spearman correlation: {np.mean(cv_spearman_scores):.4f} (±{np.std(cv_spearman_scores):.4f})")
 print(f"Range of AUC: {np.min(cv_auc_scores):.4f} - {np.max(cv_auc_scores):.4f}")
 
-# 保存结果
+# Save results
 cv_results = pd.DataFrame({
     'Fold': range(1, 6),
     'AUC': cv_auc_scores,
@@ -688,7 +688,7 @@ cv_results = pd.DataFrame({
 cv_results.to_csv('cross_validation_results.csv', index=False, encoding='utf-8')
 print("Cross-validation results saved to cross_validation_results.csv")
 
-# 绘制CV结果图
+# Plot CV results
 plt.figure(figsize=(10, 6))
 plt.subplot(1, 2, 1)
 plt.boxplot(cv_auc_scores)
@@ -707,5 +707,5 @@ plt.savefig('cross_validation_boxplot.png', dpi=300, bbox_inches='tight')
 plt.close()
 print("Cross-validation boxplot saved to cross_validation_boxplot.png")
 
-print("\n=== 计算 SHAP 值 ===")
+print("\n=== Computing SHAP values ===")
 compute_shap_values(stacking_model, X_test_scaled, selected_features)
